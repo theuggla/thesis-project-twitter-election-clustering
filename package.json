@@ -9,15 +9,9 @@
   "author": "Molly Arhammar",
   "license": "ISC",
   "dependencies": {
-    "deep-extend": "^0.6.0",
-    "get-twitter-bearer-token": "^1.0.0",
     "moment": "^2.24.0",
     "request": "^2.88.0",
     "request-promise": "^4.2.2",
     "request-promise-native": "^1.0.5",
-    "twitterize": "^1.0.2"
-  },
-  "devDependencies": {
-    "simple-node-logger": "^18.12.21"
   }
 }
