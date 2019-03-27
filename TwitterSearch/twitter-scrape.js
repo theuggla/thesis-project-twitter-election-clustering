@@ -6,29 +6,33 @@ const Twitter = require('./twitter')
 
 // Variables
 const secrets = require('./secrets')
-const month = 'February'
+const month = 'March'
 
-const queries = [ 
-  {
+const queries = [
+  /*{
     query: 'clinton place:Denver',
     fromDate: '201610010000',
-    toDate: '201611070000'
+    toDate: '201611070000',
+    next: 'eyJhdXRoZW50aWNpdHkiOiI5ZDBmZWYyMWE0NTM0MWQ1NDhkOWE2YWI5NmExNGVlNmRjM2MwMzE3YjE1MTE0YTU5MzU3YTc5ODJlNzU5NjY5IiwiZnJvbURhdGUiOiIyMDE2MTAwMTAwMDAiLCJ0b0RhdGUiOiIyMDE2MTEwNzAwMDAiLCJuZXh0IjoiMjAxNjEwMDcxODU5MzgtNzg0NDY4MjQxNTE1MTA2MzAzLTAifQ=='
   },
   {
     query: 'trump place:Denver',
     fromDate: '201610010000',
-    toDate: '201611070000'
-  },
+    toDate: '201611070000',
+    next: 'eyJhdXRoZW50aWNpdHkiOiI0ZWFjZTFlYTE3ODAyNzM5NTFmYTY2ZTU5MzRlZGQwYjFkOTk3ZTBhZGNjODgyMmEyMmNhMzYwOGY2ODI5YWZkIiwiZnJvbURhdGUiOiIyMDE2MTAwMTAwMDAiLCJ0b0RhdGUiOiIyMDE2MTEwNzAwMDAiLCJuZXh0IjoiMjAxNjEwMjgwNDQyNDAtNzkxODYyNzI0NDUxOTMwMTExLTAifQ=='
+  },*/
   {
     query: 'clinton place:Columbus',
-    fromDate: '201610010000',
-    toDate: '201611070000'
+    fromDate: '201609010000',
+    toDate: '201610010000',
+    /*next: 'eyJhdXRoZW50aWNpdHkiOiI1YTgzYjNmNzIzN2JmMDVkZjQzYTQwYzM4MzE5ZGRmZmE4YzMwMWUwMDljNDVjNmYwNWJjMWUwOWYxMzU2YjIwIiwiZnJvbURhdGUiOiIyMDE2MTAwMTAwMDAiLCJ0b0RhdGUiOiIyMDE2MTEwNzAwMDAiLCJuZXh0IjoiMjAxNjEwMjAyMDUwMDItNzg5MjA3MDY5Mjc4NzQwNDc5LTAifQ=='*/
   },
-  {
+  /*{
     query: 'trump place:Columbus',
     fromDate: '201610010000',
-    toDate: '201611070000'
-  }
+    toDate: '201611070000',
+    next: 'eyJhdXRoZW50aWNpdHkiOiI5MWRhZjI3MGJmMWVjNGEwOWM4YjJlYzI4YzEzY2Q0NzNmYTgxN2E5NWM1OGYxNWI3MjY5NjU4ODgzOTBlZjY5IiwiZnJvbURhdGUiOiIyMDE2MTAwMTAwMDAiLCJ0b0RhdGUiOiIyMDE2MTEwNzAwMDAiLCJuZXh0IjoiMjAxNjEwMjAxODQwNTEtNzg5MTc0NTU5MTI3Njc4OTc1LTAifQ=='
+  }*/
 ]
 
 const client = new Twitter({
@@ -37,9 +41,9 @@ const client = new Twitter({
 })
 
 queries.forEach((query) => {
-  getTweets(query)
+  getTweets(query, {page: 11})
     .then((message) => {
-      console.log(message)
+      console.log('done')
     })
     .catch((err) => {
       console.log(err)
@@ -47,11 +51,24 @@ queries.forEach((query) => {
 })
 
 
-function getTweets(query) {
+function getTweets(query, params) {
   return new Promise((resolve, reject) => {
-    client.search( query , { method: 'post', max_pages: 12 } )
-    .then((tweets) => {
-      return saveTweets(tweets, query)
+    const max_pages = 11
+    let result = {}
+
+    client.search(query, params)
+    .then((response) => {
+      result = response
+      return saveTweets(result.tweets, query, result.page)
+    })
+    .then(() => {
+      if (result.next && result.page < max_pages) {
+        params.next = result.next
+        params.page = result.page += 1
+        return getTweets(query, params)
+      } else {
+        return Promise.resolve(result)
+      }
     })
     .then((result) => {
       resolve(result)
@@ -62,11 +79,11 @@ function getTweets(query) {
   })
 }
 
-function saveTweets(tweets, query) {
+function saveTweets(tweets, query, page) {
   return new Promise((resolve, reject) => {
     const timestamp = moment().format('L')
     const filename = `${timestamp}.json`
-    const filepath = `./data/twitter/${month}-${query.query}-${filename}`
+    const filepath = `./data/twitter/${month}-${query.query}-p${page}-${filename}`
     const data = JSON.stringify(tweets)
 
     fs.writeFile(filepath, data, 'utf8',
@@ -74,7 +91,8 @@ function saveTweets(tweets, query) {
         if (err) {
           reject(err)
         } else {
-          resolve(`Successfully saved ${filename}`)
+          console.log(`Successfully saved ${filepath}`)
+          resolve(`Successfully saved ${filepath}`)
         }
       }
     )
