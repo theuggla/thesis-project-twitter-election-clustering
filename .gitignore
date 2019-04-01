@@ -1,5 +1,6 @@
 node_modules
 data
+modules
 **/secrets.js
 .vscode
 *.log
