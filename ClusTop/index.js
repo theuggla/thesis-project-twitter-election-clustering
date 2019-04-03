@@ -7,97 +7,142 @@ let fs = require('fs')
 let tokenizer = new openNLP().tokenizer
 let posTagger = new openNLP().posTagger
 let dataLocation = './data/other'
+let blacklist = ['trump', 'donald', 'hillary', 'hilary', 'clinton']
 
-// Construct network based on co-noun usage as unigrams
-let tweet1 = 'Pierre Vinken, 61 years old, will join the board as a nonexecutive director Nov. 29.'
-let tweet2 = 'Margreth, 61 years old, will join the board as a nonexecutive secretary Sept. 29.'
+createNewNetworksAndCollections()
 
-fs.readdirSync(`${dataLocation}/cleaned/`).forEach((file) => {
-  let communityPromisesByCandAndLoc = []
-  communityPromisesByCandAndLoc.push(
-    new Promise((resolve, reject) => {
-      fs.readFile(`${dataLocation}/cleaned/${file}`, 'utf8', (err, data) => {
-        if (err) reject(err)
-
-        console.log('reading ' + file)
-
-        let tweets = []
-        let tweetCollection = JSON.parse(data)
-
-        if (!tweetCollection.error) {
-          tweetCollection.forEach((tweet) => {
-            if (tweet && tweet.text) {
-              tweets.push(tweet.text)
-            }
-          })
+/** 
+ * Find communities of topics within each collection of tweets
+ * Save file with separated communities as arrays of words
+ * belonging to each community
+**/
+function createNewNetworksAndCollections() {
+  collectTweets()
+  .then((collections) => {
+    let collectionPartitions = collections.map(collection => clusTop(collection))
+    return Promise.all(collectionPartitions)
+  })
+  .then((result) => {
+    result.forEach((collection) => {
+      const communities = {}
+      Object.keys(collection.communities).forEach((key) => {
+        if (!communities.hasOwnProperty(collection.communities[key])) {
+          communities[collection.communities[key]] = []
         }
-
-        console.log('resolving with ' + tweets.length + ' tweets')
-        resolve({tweets: tweets, file: file})
+        communities[collection.communities[key]].push(key)
       })
-    })
-  )
 
-  Promise.all(communityPromisesByCandAndLoc).then((promises) => {
-    promises.forEach((prom) => {
-      console.log('creating network for ' + prom.file)
-      createNetwork(prom.tweets)
-      .then((network) => {
-        console.log('network created for ' + prom.file + ' adding up nodes and edges')
-        let networkNodeData = new Set()
-        let networkEdgeData = []
-
-        network.forEach((cluster) => {cluster.nodes.forEach((item) => networkNodeData.add(item))})
-        network.forEach((cluster) => {cluster.edges.forEach((item) => networkEdgeData.push(item))})
-
-        console.log('detecting communities with ' + networkNodeData.size + ' nodes and ' + networkEdgeData.length + ' edges')
-
-        communities = detectCommunities([...networkNodeData], networkEdgeData)
-
-        fs.writeFile(`./data/other/communities/${prom.file}`, (JSON.stringify(communities) + '\n'), {encoding: 'utf8', flag: 'a'},
-          (err) => {
-            if (err) {
-              console.log('Error when saving communities-file')
-            } else {
-              console.log('Successfully saved communities-file')
-            }
-          }
-        )
+      console.log(Object.keys(communities).length)
+      Object.keys(communities).forEach((key) => {
+        console.log(communities[key].length)
       })
-      .catch((error) => {
-        console.log(error)
-      })
+      saveFile(`${dataLocation}/communities/${collection.file}`, communities)
     })
   })
-})
-
-function createNetwork(tweets) {
-  let count = 0
-  return Promise.all(tweets.map((tweet) => {
-    count++
-    console.log(count)
-    if (count < 50) {
-      console.log('returing at once')
-      return getNodesAndEdges(tweet)
-    } else {
-      console.log('setting timeout')
-      setTimeout(() => {
-        console.log('returnig from timeout')
-        count = 0
-        return getNode(tweet)
-      }, 65000)
-    }
-    
-  }))
+  .catch((error) => {
+    console.log(error)
+  })
 }
 
+/**
+ * Collects the tweets from the clean-tweets file. 
+ */
+function collectTweets() {
+  return new Promise((resolve, reject) => {
+    let tweetCollectionPromisesByCandAndLoc = []
+
+    fs.readdirSync(`${dataLocation}/cleaned/`).forEach((file) => {
+      tweetCollectionPromisesByCandAndLoc.push(
+        new Promise((resolve, reject) => {
+          fs.readFile(`${dataLocation}/cleaned/${file}`, 'utf8', (err, data) => {
+            let tweets = JSON.parse(data, (key, value) => {
+              if (typeof value == 'object' && key != '') {
+                return value.text
+              }
+              else {
+                return value
+              }
+            })
+            if (err || !tweets || tweets.error) reject(err || 'Could not parse data.')
+            resolve({tweets: tweets, file: file})
+          })
+        })
+      )
+    })
+
+    Promise.all(tweetCollectionPromisesByCandAndLoc).then(collections => resolve(collections)).catch((error) => reject(error))
+  })
+}
+
+/**
+ * Creates a network and separates the tweets into topics
+ * using the lovain community detection
+ * algorithm, as laid out in this paper:
+ * https://www.researchgate.net/publication/321050909_ClusTop_A_Clustering-based_Topic_Modelling_Algorithm_for_Twitter_using_Word_Networks
+ */
+function clusTop(collection) {
+  return new Promise((resolve, reject) => {
+    createNetwork(collection.tweets)
+    .then((network) => {
+      let networkNodeData = new Set()
+      let networkEdgeData = []
+
+      network.forEach((cluster) => {cluster.nodes.forEach((item) => networkNodeData.add(item))})
+      network.forEach((cluster) => {cluster.edges.forEach((item) => networkEdgeData.push(item))})
+
+      communities = detectCommunities([...networkNodeData], networkEdgeData)
+      resolve({file: collection.file, communities: communities})
+    })
+    .catch((error) => {
+      reject(error)
+    })
+  })
+}
+
+/**
+ * Saves a file with the given data at the given path.
+ */
+function saveFile(path, data) {
+  fs.writeFile(path, (JSON.stringify(data) + '\n'), {encoding: 'utf8'},
+    (err) => {
+      if (err) {
+        console.log('Error when saving file')
+      } else {
+        console.log('Successfully saved file')
+      }
+    }
+  )
+}
+
+/**
+ * Construct network based on co-noun usage as unigrams.
+ **/
+function createNetwork(tweets) {
+  let count = 0
+  return tweets.reduce((promiseChain, tweet) => {
+    return promiseChain.then((chainResults) => {
+      return getNodesAndEdges(tweet).then((currentResult) => {
+        count++
+        console.log(count + '/' + tweets.length)
+        return [ ...chainResults, currentResult ]
+      })
+    })
+  }, Promise.resolve([])).then((arrayOfResults) => {
+    return arrayOfResults
+  })
+}
+
+/**
+ * Gets nodes as unigrams where unigrams is
+ * represented by nouns, and edges between them
+ * for the given tweet.
+ */
 function getNodesAndEdges(tweet) {
   return new Promise((resolve, reject) => {
     getNounsFromTweet(tweet)
     .then((result) => {
       let nodes = addNodesToNetwork(result)
       let edges = addEdgesToNetwork(result)
-      console.log('resolving nodes and edges')
 
       resolve({nodes: nodes, edges: edges})
     })
@@ -107,6 +152,14 @@ function getNodesAndEdges(tweet) {
   })
 }
 
+/**
+ * Finds the communities with highest correlation
+ * given the nodes and edges and returns them
+ * as an object where each node has a community key
+ * like {it1: 0, it2: 0, it3: 1}
+ * @param {[string]} nodes the nodes to use, strings as keys like ['it1', 'it2']
+ * @param {[Object]} edges the edges between the nodes as {source: 'it1', target: 'it2', weight: 3}
+ */
 function detectCommunities(nodes, edges) {
   let community = louvain().nodes(nodes).edges(edges)
   let communities  = community()
@@ -114,7 +167,10 @@ function detectCommunities(nodes, edges) {
   return communities
 }
 
-
+/**
+ * Extracts the nouns from the tweet and returns
+ * an array with the nouns.
+ */
 function getNounsFromTweet(tweet) {
   let tokenizedSentence = []
   let categories = []
@@ -122,13 +178,16 @@ function getNounsFromTweet(tweet) {
   return new Promise((resolve, reject) => {
     getTokenizedSentence(tweet)
     .then((result) => {
-      console.log('got tokenized tweet')
       tokenizedSentence = result
       return getCategories(tokenizedSentence.join(' '))
     })
     .then((result) => {
       categories = result
       return getNouns(tokenizedSentence, categories)
+    })
+    .then((result) => {
+      nouns = result
+      return cleanUp(nouns)
     })
     .then((result) => {
       resolve(result)
@@ -176,7 +235,6 @@ function addEdgesToNetwork(nodes) {
 function getTokenizedSentence(sentence) {
   return new Promise((resolve, reject) => {
     tokenizer.tokenize(sentence, (err, results) => {
-      console.log('returned from tokenization')
       if (err) {
         reject('Could not tokenize sentence.')
       }
@@ -214,5 +272,25 @@ function getNouns(sentence, categories) {
       if (category[0] === 'N') nouns.push(sentence[index].toLowerCase())
     })
     resolve(nouns)
+  })
+}
+
+/**
+ * Cleans upthe word list by removing all words from the blacklist as well as
+ * all twitter-handles.
+ */
+function cleanUp(words) {
+  return new Promise((resolve, reject) => {
+    let cleaned = []
+
+    blacklist.forEach((b_word) => {
+      words.forEach((word) => {
+        if (!(word.startsWith('@') || word.includes('://') || word.includes(b_word))) {
+          cleaned.push(word)
+        }
+      })
+    })
+    
+    resolve(cleaned)
   })
 }

@@ -58,7 +58,7 @@ class Twitter {
       })
     } else {
       setTimeout(() => {
-        requests = 0
+        this.requests = 0
         return this.search(query, params)
       }, 65000)
     }
