@@ -32,10 +32,6 @@ function createNewNetworksAndCollections() {
         communities[collection.communities[key]].push(key)
       })
 
-      console.log(Object.keys(communities).length)
-      Object.keys(communities).forEach((key) => {
-        console.log(communities[key].length)
-      })
       saveFile(`${dataLocation}/communities/${collection.file}`, communities)
     })
   })
@@ -55,14 +51,7 @@ function collectTweets() {
       tweetCollectionPromisesByCandAndLoc.push(
         new Promise((resolve, reject) => {
           fs.readFile(`${dataLocation}/cleaned/${file}`, 'utf8', (err, data) => {
-            let tweets = JSON.parse(data, (key, value) => {
-              if (typeof value == 'object' && key != '') {
-                return value.text
-              }
-              else {
-                return value
-              }
-            })
+            let tweets = JSON.parse(data, (key, value) => (typeof value == 'object' && key != '') ? value.text : value)
             if (err || !tweets || tweets.error) reject(err || 'Could not parse data.')
             resolve({tweets: tweets, file: file})
           })
@@ -76,7 +65,7 @@ function collectTweets() {
 
 /**
  * Creates a network and separates the tweets into topics
- * using the lovain community detection
+ * using the louvain community detection
  * algorithm, as laid out in this paper:
  * https://www.researchgate.net/publication/321050909_ClusTop_A_Clustering-based_Topic_Modelling_Algorithm_for_Twitter_using_Word_Networks
  */
@@ -285,7 +274,7 @@ function cleanUp(words) {
 
     blacklist.forEach((b_word) => {
       words.forEach((word) => {
-        if (!(word.startsWith('@') || word.includes('://') || word.includes(b_word))) {
+        if (!(word.startsWith('@') || word.startsWith('.@') || word.includes('://') || word.includes(b_word))) {
           cleaned.push(word)
         }
       })

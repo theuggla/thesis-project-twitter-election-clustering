@@ -1,10 +1,15 @@
+// Imports
 const fs = require('fs')
 const dataLocation = './data/twitter'
 
+// Clean data to only save the tweet and date of the tweet
+// and save in a single file as an array of cleaned tweet-objects
 fs.readdirSync(dataLocation).forEach((candidate) => {
   fs.readdirSync(`${dataLocation}/${candidate}`).forEach((location) => {
     let localizedCandidatePromises = []
     
+    // Clean up tweets to an array of promises that will  resolve
+    // with collections based on candidate and location
     fs.readdirSync(`${dataLocation}/${candidate}/${location}`).forEach((file) => {
       localizedCandidatePromises.push(
         new Promise((resolve, reject) => {
@@ -19,8 +24,6 @@ fs.readdirSync(dataLocation).forEach((candidate) => {
                 if (tweet) {
                   const text = tweet.extended_tweet ? tweet.extended_tweet.full_text : tweet.text
                   const date = tweet.created_at
-                  
-                  console.log(date)
                   tweets.add({text, date})
                 }
               })
@@ -31,10 +34,12 @@ fs.readdirSync(dataLocation).forEach((candidate) => {
       )
     })
 
+    // Concat cleaned tweets from all files and save into single file
     Promise.all(localizedCandidatePromises).then((promises) => {
       let tweets = []
       promises.forEach((prom) => (tweets = tweets.concat(prom)))
-      console.log(tweets.length)
+
+      console.log(`${candidate} - ${location}: ${tweets.length}`)
   
       fs.writeFile(`./data/other/${candidate}-${location}`, (JSON.stringify(tweets) + '\n'), {encoding: 'utf8', flag: 'a'},
         (err) => {

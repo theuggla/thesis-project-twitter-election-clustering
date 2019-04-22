@@ -17,9 +17,12 @@ class Twitter {
     }
 
     this.requests = 0
-    this.RATE_LIMIT = 22
+    this.RATE_LIMIT = 20
   }
 
+  /**
+   * Makes a request to the Twitter API with the given query.
+   */
   search(query, params) {
     this.requests += 1
 
@@ -41,7 +44,7 @@ class Twitter {
           if (response.error) {
             reject(new Error('Error: ' + response.error.message))
           }
-          fs.writeFile(`./data/twitter/${query.query}-next`, (JSON.stringify({page: params.page, next: response.next}) + '\n'), {encoding: 'utf8', flag: 'a'},
+          fs.writeFile(`./data/twitter/${query.query}-next-april`, (JSON.stringify({page: params.page, next: response.next}) + '\n'), {encoding: 'utf8', flag: 'a'},
           (err) => {
             if (err) {
               console.log('Error when saving next-file')
